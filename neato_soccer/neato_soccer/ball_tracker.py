@@ -30,6 +30,9 @@ class BallTracker(Node):
         """ Process image messages from ROS and stash them in an attribute
             called cv_image for subsequent processing """
         self.cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
+        moments = cv2.moments(self.binary_image)
+        if moments['m00'] != 0:
+            self.center_x, self.center_y = moments['m10']/moments['m00'], moments['m01']/moments['m00']
 
     def loop_wrapper(self):
         """ This function takes care of calling the run_loop function repeatedly.
@@ -39,9 +42,46 @@ class BallTracker(Node):
         cv2.namedWindow('binary_window')
         cv2.namedWindow('image_info')
         cv2.setMouseCallback('video_window', self.process_mouse_event)
+        cv2.namedWindow('binary_image')
+        self.red_lower_bound = 0
+        self.red_upper_bound = 255
+        self.green_lower_bound = 0
+        self.green_upper_bound = 255
+        self.blue_lower_bound = 0
+        self.blue_upper_bound = 255
+        # cv2.createTrackbar('red lower bound', 'binary_window', self.red_lower_bound, 255, self.set_red_lower_bound)
+        # cv2.createTrackbar('red upper bound', 'binary_window', self.red_upper_bound, 255, self.set_red_upper_bound)
+        # cv2.createTrackbar('green lower bound', 'binary_window', self.green_lower_bound, 255, self.set_green_lower_bound)
+        # cv2.createTrackbar('green upper bound', 'binary_window', self.green_upper_bound, 255, self.set_green_upper_bound)
+        # cv2.createTrackbar('blue lower bound', 'binary_window', self.blue_lower_bound, 255, self.set_blue_lower_bound)
+        # cv2.createTrackbar('blue upper bound', 'binary_window', self.blue_upper_bound, 255, self.set_blue_upper_bound)
         while True:
             self.run_loop()
             time.sleep(0.1)
+    
+    def set_red_lower_bound(self, val):
+        """ A callback function to handle the OpenCV slider to select the red lower bound """
+        self.red_lower_bound = val
+    
+    def set_red_upper_bound(self, val):
+        """ A callback function to handle the OpenCV slider to select the red upper bound """
+        self.red_upper_bound = val
+
+    def set_green_lower_bound(self, val):
+        """ A callback function to handle the OpenCV slider to select the green lower bound """
+        self.green_lower_bound = val
+    
+    def set_green_upper_bound(self, val):
+        """ A callback function to handle the OpenCV slider to select the green upper bound """
+        self.green_upper_bound = val
+    
+    def set_blue_lower_bound(self, val):
+        """ A callback function to handle the OpenCV slider to select the blue lower bound """
+        self.blue_lower_bound = val
+    
+    def set_blue_upper_bound(self, val):
+        """ A callback function to handle the OpenCV slider to select the blue upper bound """
+        self.blue_upper_bound = val
 
     def process_mouse_event(self, event, x,y,flags,param):
         """ Process mouse events so that you can see the color values
@@ -55,15 +95,26 @@ class BallTracker(Node):
                     (0,0,0))
 
     def run_loop(self):
-        # NOTE: only do cv2.imshow and cv2.waitKey in this function 
+        vel = Twist()
+        # NOTE: only do cv2.imshow and cv2.waitKey in this function
         if not self.cv_image is None:
-            self.binary_image = cv2.inRange(self.cv_image, (128,128,128), (255,255,255))
+            #self.binary_image = cv2.inRange(self.cv_image, (self.blue_lower_bound,self.green_lower_bound,self.red_lower_bound), (self.blue_upper_bound,self.green_upper_bound,self.red_upper_bound))
+            self.binary_image = cv2.inRange(self.cv_image, (0,98,0), (83,255,95))
             print(self.cv_image.shape)
             cv2.imshow('video_window', self.cv_image)
             cv2.imshow('binary_window', self.binary_image)
             if hasattr(self, 'image_info_window'):
                 cv2.imshow('image_info', self.image_info_window)
             cv2.waitKey(5)
+
+            green_pixels = np.sum(self.binary_image)
+            num_pixels = self.binary_image.size
+            if green_pixels < 0.01*num_pixels or green_pixels > 0.9*num_pixels:
+                vel.linear.x = 0.0
+                self.pub.publish(vel)
+            else:
+                vel.linear.x = np.sum(self.binary_image)/self.binary_image.size # binary_image is list of 1s and 0s - 1s are the green pixels
+                self.pub.publish(vel)
 
 if __name__ == '__main__':
     node = BallTracker("/camera/image_raw")
